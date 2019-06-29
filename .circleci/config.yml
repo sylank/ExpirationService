@@ -1,0 +1,85 @@
+version: 2
+
+defaults: &defaults
+  docker:
+  - image: mateuszczubak/codebuild-golang
+
+jobs:
+  package:
+    <<: *defaults
+    steps:
+    - checkout
+
+    - run:
+        name: Package (update credentials)
+        command: sh .circleci/package.sh
+
+    - persist_to_workspace:
+        root: .
+        paths:
+        - config/calendars.json
+        - config/credentials.json
+        - config/database_properties.json
+        - config/deletion_reminder_template.html
+        - config/secrets.json
+        - config/token.json
+
+  build:
+    <<: *defaults
+    steps:
+    - checkout
+
+    - attach_workspace:
+        at: .
+
+    - run:
+        name: Build
+        command: sh .circleci/build.sh
+
+    - persist_to_workspace:
+        root: .
+        paths:
+        - main
+        - .circleci/artifactory_copy.sh
+        - infrastructure/APP_NAME
+        - infrastructure/VERSION
+        - config/calendars.json
+        - config/credentials.json
+        - config/database_properties.json
+        - config/deletion_reminder_template.html
+        - config/secrets.json
+        - config/token.json
+
+
+  artifactory_copy:
+    <<: *defaults
+    steps:
+    - attach_workspace:
+        at: .
+    - run:
+        name: Copy build files into artifactory.
+        command: sh .circleci/artifactory_copy.sh
+
+
+workflows:
+  version: 2
+
+  package-build-publish:
+    jobs:
+    - package:
+        filters:
+          branches:
+            ignore: /^skip\/\w+/
+
+    - build:
+        filters:
+          branches:
+            ignore: /^skip\/\w+/
+        requires:
+        - package
+    - artifactory_copy:
+        filters:
+          branches:
+            ignore: /^skip\/\w+/
+        requires:
+        - build
