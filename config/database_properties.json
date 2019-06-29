@@ -1,0 +1,11 @@
+{
+    "region": "eu-central-1",
+    "tableInfo": {
+        "tempReservation":{
+            "tableName":"temp_reservation"
+        },
+        "userData":{
+            "tableName":"user_data"
+        }
+    }
+}
