@@ -20,7 +20,7 @@ jobs:
         - config/calendars.json
         - config/credentials.json
         - config/database_properties.json
-        - config/deletion_reminder_template.html
+        - config/deletion_template.html
         - config/secrets.json
         - config/token.json
 
@@ -46,7 +46,7 @@ jobs:
         - config/calendars.json
         - config/credentials.json
         - config/database_properties.json
-        - config/deletion_reminder_template.html
+        - config/deletion_template.html
         - config/secrets.json
         - config/token.json
 
