@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -18,8 +20,9 @@ import (
 )
 
 const (
-	EMAIL_TEMPLATE      = "./config/deletion_template.html"
-	DATABASE_PROPERTIES = "./config/database_properties.json"
+	EMAIL_TEMPLATE          = "./config/deletion_template.html"
+	DATABASE_PROPERTIES     = "./config/database_properties.json"
+	EXPIRATION_TRESHOLD_SEC = 50
 )
 
 type ReservationDynamoModel struct {
@@ -44,6 +47,16 @@ func UnmarshalStreamImage(attribute map[string]events.DynamoDBAttributeValue, ou
 	return dynamodbattribute.UnmarshalMap(dbAttrMap, out)
 }
 
+func isExpired(expiration int64) bool {
+	nowSec := time.Now().Unix()
+
+	if nowSec-EXPIRATION_TRESHOLD_SEC <= expiration {
+		return true
+	}
+
+	return false
+}
+
 func handler(ctx context.Context, req events.DynamoDBEvent) {
 	dynamoProperties, err := properties.ReadDynamoProperties(DATABASE_PROPERTIES)
 	userTableName := dynamoProperties.GetTableName("userData")
@@ -65,48 +78,55 @@ func handler(ctx context.Context, req events.DynamoDBEvent) {
 			fmt.Println("Unmarshalling image data")
 			err = UnmarshalStreamImage(record.Change.OldImage, reservationItem)
 			if err != nil {
-				fmt.Println(err)
-
-				return
+				panic(err)
 			}
 
 			log.Println("Reservation item:")
 			log.Println(reservationItem)
 
-			proj := expression.NamesList(expression.Name("FullName"), expression.Name("Email"), expression.Name("Phone"), expression.Name("UserId"))
-			result, err := dynamo.CustomQuery("UserId", reservationItem.UserId, userTableName, proj)
+			expiration, err := strconv.ParseInt(reservationItem.Expiring, 10, 64)
 			if err != nil {
-				log.Println("Failed to fetch user data")
-				panic(err)
+				panic(fmt.Sprintln("Failed to convert timestamp to integer: %s", reservationItem.Expiring))
 			}
 
-			for _, i := range result.Items {
-				item := dynamo.UserModel{}
-
-				err = dynamodbattribute.UnmarshalMap(i, &item)
+			if isExpired(expiration) {
+				proj := expression.NamesList(expression.Name("FullName"), expression.Name("Email"), expression.Name("Phone"), expression.Name("UserId"))
+				result, err := dynamo.CustomQuery("UserId", reservationItem.UserId, userTableName, proj)
 				if err != nil {
-					log.Println("Failed to unmarshall user data record")
+					log.Println("Failed to fetch user data")
 					panic(err)
 				}
 
-				log.Println("User item:")
-				log.Println(item)
+				for _, i := range result.Items {
+					item := dynamo.UserModel{}
 
-				log.Println("Sending transactional mail")
-				templateBytes := utils.ReadBytesFromFile(EMAIL_TEMPLATE)
-				tempateString := string(templateBytes)
+					err = dynamodbattribute.UnmarshalMap(i, &item)
+					if err != nil {
+						log.Println("Failed to unmarshall user data record")
+						panic(err)
+					}
 
-				r := strings.NewReplacer(
-					"<from_date>", reservationItem.FromDate,
-					"<to_date>", reservationItem.ToDate,
-					"<reservation_id>", reservationItem.ReservationID,
-				)
+					log.Println("User item:")
+					log.Println(item)
 
-				err = SendTransactionalMail(item.Email, "Foglalásod törlésre került", r.Replace(tempateString))
-				if err != nil {
-					log.Println("Failed to send transactional email")
-					panic(err)
+					log.Println("Sending transactional mail")
+					templateBytes := utils.ReadBytesFromFile(EMAIL_TEMPLATE)
+					tempateString := string(templateBytes)
+
+					r := strings.NewReplacer(
+						"<from_date>", reservationItem.FromDate,
+						"<to_date>", reservationItem.ToDate,
+						"<reservation_id>", reservationItem.ReservationID,
+					)
+
+					err = SendTransactionalMail(item.Email, "Foglalásod törlésre került", r.Replace(tempateString))
+					if err != nil {
+						log.Println("Failed to send transactional email")
+						panic(err)
+					}
 				}
+			} else {
+				fmt.Println("Item deleted from table but it was not a TTL event")
 			}
 		}
 	}
