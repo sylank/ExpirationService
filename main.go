@@ -27,6 +27,7 @@ type ReservationDynamoModel struct {
 	FromDate      string
 	ToDate        string
 	UserId        string
+	Expiring      string
 }
 
 func UnmarshalStreamImage(attribute map[string]events.DynamoDBAttributeValue, out interface{}) error {
