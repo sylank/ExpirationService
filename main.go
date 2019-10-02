@@ -51,7 +51,7 @@ func isExpired(expiration int64) bool {
 	nowSec := time.Now().Unix()
 	fmt.Println(nowSec)
 	fmt.Println(expiration)
-	if nowSec-EXPIRATION_TRESHOLD_SEC <= expiration {
+	if nowSec-EXPIRATION_TRESHOLD_SEC <= expiration && expiration <= nowSec {
 		return true
 	}
 
