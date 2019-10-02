@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
 	"github.com/sylank/lavender-commons-go/dynamo"
@@ -32,23 +30,27 @@ type ReservationDynamoModel struct {
 	Expiring      int64
 }
 
-func UnmarshalStreamImage(attribute map[string]events.DynamoDBAttributeValue, out interface{}) error {
-	dbAttrMap := make(map[string]*dynamodb.AttributeValue)
-	for k, v := range attribute {
-		var dbAttr dynamodb.AttributeValue
-		bytes, marshalErr := v.MarshalJSON()
-		if marshalErr != nil {
-			return marshalErr
-		}
-		json.Unmarshal(bytes, &dbAttr)
-		dbAttrMap[k] = &dbAttr
+func unmarshalStreamImage(attribute map[string]events.DynamoDBAttributeValue) *ReservationDynamoModel {
+	reservationItem := &ReservationDynamoModel{}
+	reservationItem.ReservationID = attribute["ReservationId"].String()
+	reservationItem.FromDate = attribute["FromDate"].String()
+	reservationItem.ToDate = attribute["ToDate"].String()
+	reservationItem.UserId = attribute["UserId"].String()
+	expiring, err := attribute["Expiring"].Integer()
+
+	if err != nil {
+		panic("Failed to convert dynamo integer to int64")
 	}
-	return dynamodbattribute.UnmarshalMap(dbAttrMap, out)
+
+	reservationItem.Expiring = expiring
+
+	return reservationItem
 }
 
 func isExpired(expiration int64) bool {
 	nowSec := time.Now().Unix()
-
+	fmt.Println(nowSec)
+	fmt.Println(expiration)
 	if nowSec-EXPIRATION_TRESHOLD_SEC <= expiration {
 		return true
 	}
@@ -72,21 +74,14 @@ func handler(ctx context.Context, req events.DynamoDBEvent) {
 			fmt.Println("Old image")
 			fmt.Println(record.Change.OldImage)
 
-			reservationItem := &ReservationDynamoModel{}
-
 			fmt.Println("Unmarshalling image data")
-			err = UnmarshalStreamImage(record.Change.OldImage, reservationItem)
+			reservationItem := unmarshalStreamImage(record.Change.OldImage)
 			if err != nil {
 				panic(err)
 			}
 
 			log.Println("Reservation item:")
 			log.Println(reservationItem)
-
-			//expiration, err := strconv.ParseInt(reservationItem.Expiring, 10, 64)
-			//if err != nil {
-			//	panic(fmt.Sprintln("Failed to convert timestamp to integer: %s", reservationItem.Expiring))
-			//}
 
 			if isExpired(reservationItem.Expiring) {
 				proj := expression.NamesList(expression.Name("FullName"), expression.Name("Email"), expression.Name("Phone"), expression.Name("UserId"))
