@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strconv"
 	"strings"
 	"time"
 
@@ -84,12 +83,12 @@ func handler(ctx context.Context, req events.DynamoDBEvent) {
 			log.Println("Reservation item:")
 			log.Println(reservationItem)
 
-			expiration, err := strconv.ParseInt(reservationItem.Expiring, 10, 64)
-			if err != nil {
-				panic(fmt.Sprintln("Failed to convert timestamp to integer: %s", reservationItem.Expiring))
-			}
+			//expiration, err := strconv.ParseInt(reservationItem.Expiring, 10, 64)
+			//if err != nil {
+			//	panic(fmt.Sprintln("Failed to convert timestamp to integer: %s", reservationItem.Expiring))
+			//}
 
-			if isExpired(expiration) {
+			if isExpired(reservationItem.Expiring) {
 				proj := expression.NamesList(expression.Name("FullName"), expression.Name("Email"), expression.Name("Phone"), expression.Name("UserId"))
 				result, err := dynamo.CustomQuery("UserId", reservationItem.UserId, userTableName, proj)
 				if err != nil {
